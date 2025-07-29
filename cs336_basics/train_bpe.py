@@ -86,6 +86,7 @@ class BPETokenizer:
         token_tuple_count = {tuple(bytes([b]) for b in token.encode('utf-8')): count for token, count in pretokenized.items()}
         token_tuples = list(token_tuple_count.keys())
 
+        print("Pretokenization done. Start invert indexing...")
         inverted_indices = defaultdict(list)
         for i in range(len(token_tuples)):
             token_tuple = token_tuples[i]
@@ -101,6 +102,7 @@ class BPETokenizer:
         byte_pair_count_max_heap = [PairItem(count, pair[0], pair[1]) for pair, count in byte_pair_count.items()]
         heapq.heapify(byte_pair_count_max_heap)
 
+        print("Start merging...")
         remaining = self.vocab_size - len(vocabs)
         merges = []
         while remaining > 0:
