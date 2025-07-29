@@ -17,12 +17,64 @@ def split_text(text: str, special_tokens: List[str]) -> List[str]:
     else:
         return [text]
 
-def parallel_split_texts(texts: List[str], special_tokens: List[str], num_processes: int) -> List[str]:
-    with multiprocessing.get_context("spawn").Pool(processes=num_processes) as pool:
-        results = pool.starmap(split_text, [(text, special_tokens) for text in texts])
+def worker_process(input_queue: multiprocessing.Queue, output_queue: multiprocessing.Queue, special_tokens: List[str]):
+    """Worker process that takes texts from input queue and puts results in output queue"""
+    while True:
+        try:
+            # Get work item from input queue with timeout
+            item = input_queue.get(timeout=1)
+            
+            # Check for poison pill (signal to stop)
+            if item is None:
+                break
+                
+            index, text = item
+            result = split_text(text, special_tokens)
+            output_queue.put((index, result))
+            
+        except:
+            # Timeout or other exception - exit worker
+            break
 
-    # Flatten list of lists into a single list
-    text_parts = [part for result in results for part in result]
+def parallel_split_texts(texts: List[str], special_tokens: List[str], num_processes: int) -> List[str]:
+    """Split texts in parallel using Queue-based multiprocessing"""
+    if not texts:
+        return []
+    
+    # Create queues
+    input_queue = multiprocessing.Queue()
+    output_queue = multiprocessing.Queue()
+    
+    # Put all work items in input queue with their original indices
+    for i, text in enumerate(texts):
+        input_queue.put((i, text))
+    
+    # Add poison pills to signal workers to stop
+    for _ in range(num_processes):
+        input_queue.put(None)
+    
+    # Start worker processes
+    processes = []
+    for _ in range(num_processes):
+        p = multiprocessing.Process(target=worker_process, args=(input_queue, output_queue, special_tokens))
+        p.start()
+        processes.append(p)
+    
+    # Collect results
+    results = {}
+    for _ in range(len(texts)):
+        index, result = output_queue.get()
+        results[index] = result
+    
+    # Wait for all processes to complete
+    for p in processes:
+        p.join()
+    
+    # Flatten results in original order
+    text_parts = []
+    for i in range(len(texts)):
+        text_parts.extend(results[i])
+    
     return text_parts
 
 class PairItem:
