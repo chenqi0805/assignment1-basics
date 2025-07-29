@@ -1,9 +1,28 @@
 from collections import Counter, defaultdict
+import multiprocessing
 import os
+from typing import List
 import regex as re
 import heapq
 
+from cs336_basics.pretokenization_example import find_chunk_boundaries
+
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+def split_text(text: str, special_tokens: List[str]) -> List[str]:
+    if special_tokens:
+        special_pattern = f"(?:{'|'.join(re.escape(s) for s in special_tokens)})"
+        return [part for part in re.split(special_pattern, text) if part and part not in special_tokens]
+    else:
+        return [text]
+
+def parallel_split_texts(texts: List[str], special_tokens: List[str], num_processes: int) -> List[str]:
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        results = pool.starmap(split_text, [(text, special_tokens) for text in texts])
+
+    # Flatten list of lists into a single list
+    text_parts = [part for result in results for part in result]
+    return text_parts
 
 class PairItem:
     """自定义类用于在堆中实现正确的排序"""
@@ -28,20 +47,23 @@ class PairItem:
                 self.bytes2 == other.bytes2)
 
 class BPETokenizer:
-    def __init__(self, vocab_size: int, special_tokens: list[str]):
+    def __init__(self, vocab_size: int, special_tokens: list[str], num_processes: int=4):
         self.vocab_size = vocab_size
         self.special_tokens = special_tokens
+        self.num_processes = num_processes
 
     def train(self, input_path: str | os.PathLike):
         vocabs = set([bytes([i]) for i in range(256)])
         vocabs.update([s.encode('utf-8') for s in self.special_tokens])
-        with open(input_path, "r", encoding="utf-8") as f:
-            text = f.read()
-        if self.special_tokens:
-            special_pattern = f"(?:{'|'.join(re.escape(s) for s in self.special_tokens)})"
-            text_parts = [part for part in re.split(special_pattern, text) if part and part not in self.special_tokens]
-        else:
-            text_parts = [text]
+        chunks = []
+        with open(input_path, "rb") as f:
+            boundaries = find_chunk_boundaries(f, self.num_processes, b"<|endoftext|>")
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                f.seek(start)
+                chunk = f.read(end - start).decode("utf-8", errors="ignore")
+                chunks.append(chunk)
+        print("number of parallel processing chunks:", len(chunks))
+        text_parts = parallel_split_texts(chunks, self.special_tokens, self.num_processes)
         
         pretokenized = self._pretokenize(text_parts)
         token_tuple_count = {tuple(bytes([b]) for b in token.encode('utf-8')): count for token, count in pretokenized.items()}
