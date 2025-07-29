@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import logging
 import multiprocessing
 import os
@@ -17,64 +18,36 @@ def split_text(text: str, special_tokens: List[str]) -> List[str]:
     else:
         return [text]
 
-def worker_process(input_queue: multiprocessing.Queue, output_queue: multiprocessing.Queue, special_tokens: List[str]):
-    """Worker process that takes texts from input queue and puts results in output queue"""
-    while True:
-        try:
-            # Get work item from input queue with timeout
-            item = input_queue.get(timeout=1)
-            
-            # Check for poison pill (signal to stop)
-            if item is None:
-                break
-                
-            index, text = item
-            result = split_text(text, special_tokens)
-            output_queue.put((index, result))
-            
-        except:
-            # Timeout or other exception - exit worker
-            break
 
-def parallel_split_texts(texts: List[str], special_tokens: List[str], num_processes: int) -> List[str]:
-    """Split texts in parallel using Queue-based multiprocessing"""
+def parallel_split_texts(
+    texts: List[str],
+    special_tokens: List[str],
+    num_threads: int
+) -> List[str]:
     if not texts:
         return []
-    
-    # Create queues
-    input_queue = multiprocessing.Queue()
-    output_queue = multiprocessing.Queue()
-    
-    # Put all work items in input queue with their original indices
-    for i, text in enumerate(texts):
-        input_queue.put((i, text))
-    
-    # Add poison pills to signal workers to stop
-    for _ in range(num_processes):
-        input_queue.put(None)
-    
-    # Start worker processes
-    processes = []
-    for _ in range(num_processes):
-        p = multiprocessing.Process(target=worker_process, args=(input_queue, output_queue, special_tokens))
-        p.start()
-        processes.append(p)
-    
-    # Collect results
-    results = {}
-    for _ in range(len(texts)):
-        index, result = output_queue.get()
-        results[index] = result
-    
-    # Wait for all processes to complete
-    for p in processes:
-        p.join()
-    
+
+    results = []
+
+    with ProcessPoolExecutor(max_workers=num_threads) as executor:
+        futures = {
+            executor.submit(split_text, text, special_tokens): i
+            for i, text in enumerate(texts)
+        }
+
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                print(f"Error in thread {index}: {e}")
+
     # Flatten results in original order
     text_parts = []
-    for i in range(len(texts)):
-        text_parts.extend(results[i])
-    
+    for parts in results:
+        text_parts.extend(parts)
+
     return text_parts
 
 class PairItem:
@@ -116,6 +89,8 @@ class BPETokenizer:
                 chunk = f.read(end - start).decode("utf-8", errors="ignore")
                 chunks.append(chunk)
         print("number of parallel processing chunks:", len(chunks))
+        for chunk in chunks:
+            print("chunk size:", len(chunk))
         try:
             text_parts = parallel_split_texts(chunks, self.special_tokens, self.num_processes)
         except Exception as e:
