@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+import logging
 import multiprocessing
 import os
 from typing import List
@@ -63,7 +64,12 @@ class BPETokenizer:
                 chunk = f.read(end - start).decode("utf-8", errors="ignore")
                 chunks.append(chunk)
         print("number of parallel processing chunks:", len(chunks))
-        text_parts = parallel_split_texts(chunks, self.special_tokens, self.num_processes)
+        try:
+            text_parts = parallel_split_texts(chunks, self.special_tokens, self.num_processes)
+        except Exception as e:
+            # Fallback to single-threaded processing
+            logging.warning(f"Multiprocessing failed: {e}. Falling back to single-threaded.")
+            text_parts = split_text(''.join(chunks), self.special_tokens)
         
         pretokenized = self._pretokenize(text_parts)
         token_tuple_count = {tuple(bytes([b]) for b in token.encode('utf-8')): count for token, count in pretokenized.items()}
