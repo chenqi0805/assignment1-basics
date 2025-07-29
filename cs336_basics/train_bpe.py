@@ -33,12 +33,12 @@ def parallel_tokenize(texts: List[str], special_tokens: List[str], num_processes
         # Parallel processing of split + pretokenize for each text
         counters = pool.imap_unordered(split_text_and_pretokenize, [(text, special_tokens) for text in texts])
 
-    # Merge all counters
-    final_counter = Counter()
-    for c in counters:
-        final_counter.update(c)
+        # Merge all counters
+        final_counter = Counter()
+        for c in counters:
+            final_counter.update(c)
 
-    return final_counter
+        return final_counter
 
 class PairItem:
     """自定义类用于在堆中实现正确的排序"""
