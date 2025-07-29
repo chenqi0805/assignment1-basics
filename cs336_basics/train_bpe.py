@@ -17,7 +17,7 @@ def split_text(text: str, special_tokens: List[str]) -> List[str]:
         return [text]
 
 def parallel_split_texts(texts: List[str], special_tokens: List[str], num_processes: int) -> List[str]:
-    with multiprocessing.Pool(processes=num_processes) as pool:
+    with multiprocessing.get_context("spawn").Pool(processes=num_processes) as pool:
         results = pool.starmap(split_text, [(text, special_tokens) for text in texts])
 
     # Flatten list of lists into a single list
