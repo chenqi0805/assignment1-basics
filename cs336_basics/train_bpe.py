@@ -11,44 +11,34 @@ from cs336_basics.pretokenization_example import find_chunk_boundaries
 
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
-def split_text(text: str, special_tokens: List[str]) -> List[str]:
+def _pretokenize(text_parts: list[str]):
+    pretokenized = Counter()
+    for text_part in text_parts:
+        pretokenized.update(re.findall(PAT, text_part))
+    return pretokenized
+
+def split_text_and_pretokenize(args: tuple[str, List[str]]) -> Counter:
+    text, special_tokens = args
+    text_parts = []
     if special_tokens:
         special_pattern = f"(?:{'|'.join(re.escape(s) for s in special_tokens)})"
-        return [part for part in re.split(special_pattern, text) if part and part not in special_tokens]
+        text_parts = [part for part in re.split(special_pattern, text) if part and part not in special_tokens]
     else:
-        return [text]
+        text_parts = [text]
+    return _pretokenize(text_parts)
 
 
-def parallel_split_texts(
-    texts: List[str],
-    special_tokens: List[str],
-    num_threads: int
-) -> List[str]:
-    if not texts:
-        return []
+def parallel_tokenize(texts: List[str], special_tokens: List[str], num_processes: int) -> Counter:
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        # Parallel processing of split + pretokenize for each text
+        counters = pool.imap_unordered(split_text_and_pretokenize, [(text, special_tokens) for text in texts])
 
-    results = []
+    # Merge all counters
+    final_counter = Counter()
+    for c in counters:
+        final_counter.update(c)
 
-    with ProcessPoolExecutor(max_workers=num_threads) as executor:
-        futures = {
-            executor.submit(split_text, text, special_tokens): i
-            for i, text in enumerate(texts)
-        }
-
-        for future in as_completed(futures):
-            index = futures[future]
-            try:
-                result = future.result()
-                results.append(result)
-            except Exception as e:
-                print(f"Error in thread {index}: {e}")
-
-    # Flatten results in original order
-    text_parts = []
-    for parts in results:
-        text_parts.extend(parts)
-
-    return text_parts
+    return final_counter
 
 class PairItem:
     """自定义类用于在堆中实现正确的排序"""
@@ -91,14 +81,8 @@ class BPETokenizer:
         print("number of parallel processing chunks:", len(chunks))
         for chunk in chunks:
             print("chunk size:", len(chunk))
-        try:
-            text_parts = parallel_split_texts(chunks, self.special_tokens, self.num_processes)
-        except Exception as e:
-            # Fallback to single-threaded processing
-            logging.warning(f"Multiprocessing failed: {e}. Falling back to single-threaded.")
-            text_parts = split_text(''.join(chunks), self.special_tokens)
         
-        pretokenized = self._pretokenize(text_parts)
+        pretokenized = parallel_tokenize(chunks, self.special_tokens, self.num_processes)
         token_tuple_count = {tuple(bytes([b]) for b in token.encode('utf-8')): count for token, count in pretokenized.items()}
         token_tuples = list(token_tuple_count.keys())
 
@@ -165,12 +149,6 @@ class BPETokenizer:
                 new_token_tuple.append(token_tuple[idx])
                 idx += 1
         return tuple(new_token_tuple)
-        
-    def _pretokenize(self, text_parts: list[str]):
-        pretokenized = Counter()
-        for text_part in text_parts:
-            pretokenized.update(re.findall(PAT, text_part))
-        return pretokenized
     
 # obj = BPETokenizer(269, ["<|endoftext|>", " "])
 # vocab_dict, merges = obj.train("data/test.txt")
