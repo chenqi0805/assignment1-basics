@@ -90,17 +90,14 @@ class BPETokenizer:
             print("chunk size:", len(chunk))
         
         pretokenized = parallel_tokenize(chunks, self.special_tokens, self.num_processes)
-        token_tuple_count = {tuple(bytes([b]) for b in token.encode('utf-8')): count for token, count in pretokenized.items()}
-        token_tuples = list(token_tuple_count.keys())
 
         print("Pretokenization done. Start invert indexing...")
 
         pair_to_nodes = defaultdict(set)
         byte_pair_count = Counter()
-        for i in range(len(token_tuples)):
-            token_tuple = token_tuples[i]
+        for word, word_count in pretokenized.items():
+            token_tuple = tuple(bytes([b]) for b in word.encode('utf-8'))
             prevNode = None
-            word_count = token_tuple_count[token_tuple]
             for j in range(len(token_tuple)-1):
                 pair = token_tuple[j:j+2]
                 byte_pair_count[pair] += word_count
@@ -165,18 +162,6 @@ class BPETokenizer:
                 
         vocab_dict = {i: v for i, v in enumerate(vocabs)}
         return vocab_dict, merges
-
-    def merge_token_tuple(self, token_tuple, tuple_to_merge):
-        new_token_tuple = []
-        idx = 0
-        while idx < len(token_tuple):
-            if idx < len(token_tuple) - 1 and token_tuple[idx:idx+2] == tuple_to_merge:
-                new_token_tuple.append(b''.join(tuple_to_merge))
-                idx += 2
-            else:
-                new_token_tuple.append(token_tuple[idx])
-                idx += 1
-        return tuple(new_token_tuple)
     
 # obj = BPETokenizer(269, ["<|endoftext|>", " "])
 # vocab_dict, merges = obj.train("data/test.txt")
