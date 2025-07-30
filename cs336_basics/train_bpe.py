@@ -39,6 +39,13 @@ def parallel_tokenize(texts: List[str], special_tokens: List[str], num_processes
             final_counter.update(c)
 
         return final_counter
+    
+class ByteInWordNode:
+    def __init__(self, bytes: bytes, word_freq: int):
+        self.bytes = bytes
+        self.word_freq = word_freq
+        self.prev = None
+        self.next = None
 
 class PairItem:
     """自定义类用于在堆中实现正确的排序"""
@@ -87,17 +94,26 @@ class BPETokenizer:
         token_tuples = list(token_tuple_count.keys())
 
         print("Pretokenization done. Start invert indexing...")
-        inverted_indices = defaultdict(list)
+
+        pair_to_nodes = defaultdict(set)
+        byte_pair_count = Counter()
         for i in range(len(token_tuples)):
             token_tuple = token_tuples[i]
+            prevNode = None
+            word_count = token_tuple_count[token_tuple]
             for j in range(len(token_tuple)-1):
-                for k in range(j+1, len(token_tuple)):
-                    inverted_indices[b''.join(token_tuple[j:k+1])].append(i)
-        
-        byte_pair_count = Counter()
-        for token_tuple, count in token_tuple_count.items():
-            for i in range(len(token_tuple)-1):
-                byte_pair_count[token_tuple[i:i+2]] += count
+                pair = token_tuple[j:j+2]
+                byte_pair_count[pair] += word_count
+                currNode = ByteInWordNode(token_tuple[j], word_count)
+                pair_to_nodes[pair].add(currNode)
+                if prevNode is not None:
+                    prevNode.next = currNode
+                currNode.prev = prevNode
+                prevNode = currNode
+            currNode = ByteInWordNode(token_tuple[-1], word_count)
+            if prevNode is not None:
+                prevNode.next = currNode
+            currNode.prev = prevNode
 
         byte_pair_count_max_heap = [PairItem(count, pair[0], pair[1]) for pair, count in byte_pair_count.items()]
         heapq.heapify(byte_pair_count_max_heap)
@@ -106,37 +122,47 @@ class BPETokenizer:
         remaining = self.vocab_size - len(vocabs)
         merges = []
         while remaining > 0:
+            if len(byte_pair_count_max_heap) == 0:
+                break
             pairItem = heapq.heappop(byte_pair_count_max_heap)
             tuple_to_merge = (pairItem.bytes1, pairItem.bytes2)
             mergedBytes = b''.join(tuple_to_merge)
-            while mergedBytes in vocabs or pairItem.count != byte_pair_count[tuple_to_merge]:
-                pairItem = heapq.heappop(byte_pair_count_max_heap)
-                tuple_to_merge = (pairItem.bytes1, pairItem.bytes2)
-                mergedBytes = b''.join(tuple_to_merge)
+            if mergedBytes in vocabs or pairItem.count != byte_pair_count[tuple_to_merge]:
+                continue
             merges.append(tuple_to_merge)
             vocabs.add(mergedBytes)
             remaining -= 1
-            for idx in inverted_indices[mergedBytes]:
-                old_token_tuple = token_tuples[idx]
-                word = b''.join(old_token_tuple).decode('utf-8')
-                word_count = pretokenized[word]
-                new_token_tuple = self.merge_token_tuple(old_token_tuple, tuple_to_merge)
-                token_tuples[idx] = new_token_tuple
-                byte_pair_count_before_update = Counter()
-                for i in range(len(old_token_tuple)-1):
-                    byte_pair_count_before_update[old_token_tuple[i:i+2]] = byte_pair_count[old_token_tuple[i:i+2]]
-                for i in range(len(new_token_tuple)-1):
-                    byte_pair_count_before_update[new_token_tuple[i:i+2]] = byte_pair_count[new_token_tuple[i:i+2]]
-                for i in range(len(old_token_tuple)-1):
-                    byte_pair_count[old_token_tuple[i:i+2]] -= word_count
-                for i in range(len(new_token_tuple)-1):
-                    byte_pair_count[new_token_tuple[i:i+2]] += word_count
-                byte_pairs_to_push = set()
-                for byte_pair, old_count in byte_pair_count_before_update.items():
-                    if old_count != byte_pair_count[byte_pair]:
-                        byte_pairs_to_push.add(byte_pair)
-                for byte_pair in byte_pairs_to_push:
-                    heapq.heappush(byte_pair_count_max_heap, PairItem(byte_pair_count[byte_pair], byte_pair[0], byte_pair[1]))
+            candidate_byte_pairs_to_push = set()
+            tuple_to_merge_impacted_nodes = set(pair_to_nodes[tuple_to_merge])
+            for node in tuple_to_merge_impacted_nodes:
+                if node not in pair_to_nodes[tuple_to_merge]:
+                    continue
+                prevNode = node.prev
+                nextNode = node.next
+                nextNextNode = nextNode.next
+                if prevNode is not None:
+                    byte_pair_count[(prevNode.bytes, node.bytes)] -= prevNode.word_freq
+                    byte_pair_count[(prevNode.bytes, mergedBytes)] += prevNode.word_freq
+                    pair_to_nodes[(prevNode.bytes, node.bytes)].discard(prevNode)
+                    pair_to_nodes[(prevNode.bytes, mergedBytes)].add(prevNode)
+                    candidate_byte_pairs_to_push.add((prevNode.bytes, node.bytes))
+                    candidate_byte_pairs_to_push.add((prevNode.bytes, mergedBytes))
+                if nextNextNode is not None:
+                    byte_pair_count[(nextNode.bytes, nextNextNode.bytes)] -= nextNode.word_freq
+                    byte_pair_count[(mergedBytes, nextNextNode.bytes)] += node.word_freq
+                    pair_to_nodes[(nextNode.bytes, nextNextNode.bytes)].discard(nextNode)
+                    pair_to_nodes[(mergedBytes, nextNextNode.bytes)].add(node)
+                    candidate_byte_pairs_to_push.add((nextNode.bytes, nextNextNode.bytes))
+                    candidate_byte_pairs_to_push.add((mergedBytes, nextNextNode.bytes))
+                    nextNextNode.prev = node
+                node.bytes = mergedBytes
+                node.next = nextNextNode
+            del pair_to_nodes[tuple_to_merge]
+            del byte_pair_count[tuple_to_merge]
+
+            for byte_pair in candidate_byte_pairs_to_push:
+                heapq.heappush(byte_pair_count_max_heap, PairItem(byte_pair_count[byte_pair], byte_pair[0], byte_pair[1]))
+                
         vocab_dict = {i: v for i, v in enumerate(vocabs)}
         return vocab_dict, merges
 
