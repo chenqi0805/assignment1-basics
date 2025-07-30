@@ -79,7 +79,7 @@ class BPETokenizer:
         vocabs = set([bytes([i]) for i in range(256)])
         vocabs.update([s.encode('utf-8') for s in self.special_tokens])
         chunks = []
-        num_chunks = self.num_processes * 2
+        num_chunks = self.num_processes * 4
         with open(input_path, "rb") as f:
             boundaries = find_chunk_boundaries(f, num_chunks, b"<|endoftext|>")
             for start, end in zip(boundaries[:-1], boundaries[1:]):
