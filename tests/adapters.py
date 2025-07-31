@@ -9,6 +9,10 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from cs336_basics.embedding import Embedding
+from cs336_basics.linear import Linear
+from cs336_basics.positionwise_feedforward import SwiGLU
+from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.train_bpe import BPETokenizer
 
@@ -31,8 +35,10 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
+    linear_model = Linear(d_in, d_out)
+    linear_model.w = torch.nn.Parameter(weights)
 
-    raise NotImplementedError
+    return linear_model.forward(in_features)
 
 
 def run_embedding(
@@ -53,8 +59,10 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
+    embedding_layer = Embedding(vocab_size, d_model)
+    embedding_layer.embedding = torch.nn.Parameter(weights)
 
-    raise NotImplementedError
+    return embedding_layer.forward(token_ids)
 
 
 def run_swiglu(
@@ -86,7 +94,12 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    swiglu = SwiGLU(d_model, d_ff)
+    swiglu.weights1 = torch.nn.Parameter(w1_weight)
+    swiglu.weights2 = torch.nn.Parameter(w2_weight)
+    swiglu.weights3 = torch.nn.Parameter(w3_weight)
+
+    return swiglu.forward(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -381,7 +394,10 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    rmsNorm = RMSNorm(d_model, eps)
+    rmsNorm.weights = torch.nn.Parameter(weights)
+
+    return rmsNorm.forward(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
