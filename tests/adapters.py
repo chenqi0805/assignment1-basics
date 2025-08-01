@@ -3,12 +3,15 @@ from __future__ import annotations
 import os
 from typing import IO, Any, BinaryIO
 from collections.abc import Iterable
+from einops import rearrange, repeat
 from jaxtyping import Float, Int
 
 import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from cs336_basics.multihead_self_attention import MultiHeadSelfAttention
+from cs336_basics.multihead_self_attention_with_rope import MultiHeadSelfAttentionWithRoPE
 from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attention
 from cs336_basics.embedding import Embedding
 from cs336_basics.linear import Linear
@@ -157,7 +160,12 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multiheadSelfAttention = MultiHeadSelfAttention(d_model, num_heads, d_model)
+    multiheadSelfAttention.w_q = torch.nn.Parameter(rearrange(q_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_k = torch.nn.Parameter(rearrange(k_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_v = torch.nn.Parameter(rearrange(v_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_o = torch.nn.Parameter(o_proj_weight)
+    return multiheadSelfAttention.forward(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -197,7 +205,13 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    multiheadSelfAttention = MultiHeadSelfAttentionWithRoPE(theta, max_seq_len, d_model, num_heads, d_model)
+    multiheadSelfAttention.w_q = torch.nn.Parameter(rearrange(q_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_k = torch.nn.Parameter(rearrange(k_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_v = torch.nn.Parameter(rearrange(v_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.w_o = torch.nn.Parameter(o_proj_weight)
+
+    return multiheadSelfAttention.forward(in_features, token_positions)
 
 
 def run_rope(
