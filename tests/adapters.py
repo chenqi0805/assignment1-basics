@@ -12,6 +12,8 @@ from torch import Tensor
 
 from cs336_basics.adamw import AdamW
 from cs336_basics.cross_entropy import cross_entropy
+from cs336_basics.data_loading import data_loading
+from cs336_basics.gradient_clipping import gradient_clipping
 from cs336_basics.learning_rate_schedule import learning_rate_schedule
 from cs336_basics.multihead_self_attention import MultiHeadSelfAttention
 from cs336_basics.multihead_self_attention_with_rope import MultiHeadSelfAttentionWithRoPE
@@ -481,7 +483,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return data_loading(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -527,7 +529,7 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
