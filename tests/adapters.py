@@ -22,6 +22,7 @@ from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.train_bpe import BPETokenizer
 from cs336_basics.transformer_block import TransformerBlock
+from cs336_basics.transformer_lm import TransformerLM
 
 
 def run_linear(
@@ -400,7 +401,21 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    transformerLM = TransformerLM(rope_theta, vocab_size, num_layers, context_length, d_model, num_heads, d_ff)
+    transformerLM.token_embeddings.embedding = torch.nn.Parameter(weights["token_embeddings.weight"])
+    for i in range(num_layers):
+        transformerLM.layers[i].attn.q_proj = torch.nn.Parameter(rearrange(weights[f"layers.{i}.attn.q_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+        transformerLM.layers[i].attn.k_proj = torch.nn.Parameter(rearrange(weights[f"layers.{i}.attn.k_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+        transformerLM.layers[i].attn.v_proj = torch.nn.Parameter(rearrange(weights[f"layers.{i}.attn.v_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+        transformerLM.layers[i].attn.o_proj = torch.nn.Parameter(weights[f"layers.{i}.attn.output_proj.weight"])
+        transformerLM.layers[i].ln1.weights = torch.nn.Parameter(weights[f"layers.{i}.ln1.weight"])
+        transformerLM.layers[i].ln2.weights = torch.nn.Parameter(weights[f"layers.{i}.ln2.weight"])
+        transformerLM.layers[i].ffn.weights1 = torch.nn.Parameter(weights[f"layers.{i}.ffn.w1.weight"])
+        transformerLM.layers[i].ffn.weights2 = torch.nn.Parameter(weights[f"layers.{i}.ffn.w2.weight"])
+        transformerLM.layers[i].ffn.weights3 = torch.nn.Parameter(weights[f"layers.{i}.ffn.w3.weight"])
+    transformerLM.ln_final.weights = torch.nn.Parameter(weights["ln_final.weight"])
+    transformerLM.lm_head.w = torch.nn.Parameter(weights["lm_head.weight"])
+    return transformerLM(in_indices)
 
 
 def run_rmsnorm(
