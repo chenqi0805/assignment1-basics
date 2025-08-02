@@ -21,6 +21,7 @@ from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.train_bpe import BPETokenizer
+from cs336_basics.transformer_block import TransformerBlock
 
 
 def run_linear(
@@ -206,10 +207,10 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     multiheadSelfAttention = MultiHeadSelfAttentionWithRoPE(theta, max_seq_len, d_model, num_heads, d_model)
-    multiheadSelfAttention.w_q = torch.nn.Parameter(rearrange(q_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
-    multiheadSelfAttention.w_k = torch.nn.Parameter(rearrange(k_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
-    multiheadSelfAttention.w_v = torch.nn.Parameter(rearrange(v_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
-    multiheadSelfAttention.w_o = torch.nn.Parameter(o_proj_weight)
+    multiheadSelfAttention.q_proj = torch.nn.Parameter(rearrange(q_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.k_proj = torch.nn.Parameter(rearrange(k_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.v_proj = torch.nn.Parameter(rearrange(v_proj_weight, "(num_heads d_k) d_in -> num_heads d_k d_in", num_heads=num_heads))
+    multiheadSelfAttention.o_proj = torch.nn.Parameter(o_proj_weight)
 
     return multiheadSelfAttention.forward(in_features, token_positions)
 
@@ -307,7 +308,17 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    transformerBlock = TransformerBlock(theta, max_seq_len, d_model, num_heads, d_ff)
+    transformerBlock.attn.q_proj = torch.nn.Parameter(rearrange(weights["attn.q_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+    transformerBlock.attn.k_proj = torch.nn.Parameter(rearrange(weights["attn.k_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+    transformerBlock.attn.v_proj = torch.nn.Parameter(rearrange(weights["attn.v_proj.weight"], "(num_heads d_k) d_model -> num_heads d_k d_model", num_heads=num_heads))
+    transformerBlock.attn.o_proj = torch.nn.Parameter(weights["attn.output_proj.weight"])
+    transformerBlock.ln1.weights = torch.nn.Parameter(weights["ln1.weight"])
+    transformerBlock.ln2.weights = torch.nn.Parameter(weights["ln2.weight"])
+    transformerBlock.ffn.weights1 = torch.nn.Parameter(weights["ffn.w1.weight"])
+    transformerBlock.ffn.weights2 = torch.nn.Parameter(weights["ffn.w2.weight"])
+    transformerBlock.ffn.weights3 = torch.nn.Parameter(weights["ffn.w3.weight"])
+    return transformerBlock.forward(in_features)
 
 
 def run_transformer_lm(

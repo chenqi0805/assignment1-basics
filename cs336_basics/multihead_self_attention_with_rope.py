@@ -17,25 +17,25 @@ class MultiHeadSelfAttentionWithRoPE(torch.nn.Module):
         self.d_k = d_model // num_heads
         self.d_v = d_model // num_heads
         self.rope = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len, device)
-        self.w_q = torch.nn.Parameter(torch.empty(num_heads, self.d_k, d_in, **factory_kwargs))
-        torch.nn.init.trunc_normal_(self.w_q, mean=0.0, std=1, a=-3.0, b=3.0)
-        self.w_k = torch.nn.Parameter(torch.empty(num_heads, self.d_k, d_in, **factory_kwargs))
-        torch.nn.init.trunc_normal_(self.w_k, mean=0.0, std=1, a=-3.0, b=3.0)
-        self.w_v = torch.nn.Parameter(torch.empty(num_heads, self.d_v, d_in, **factory_kwargs))
-        torch.nn.init.trunc_normal_(self.w_v, mean=0.0, std=1, a=-3.0, b=3.0)
-        self.w_o = torch.nn.Parameter(torch.empty(d_model, self.d_v * num_heads, **factory_kwargs))
-        torch.nn.init.trunc_normal_(self.w_o, mean=0.0, std=1, a=-3.0, b=3.0)
+        self.q_proj = torch.nn.Parameter(torch.empty(num_heads, self.d_k, d_in, **factory_kwargs))
+        torch.nn.init.trunc_normal_(self.q_proj, mean=0.0, std=1, a=-3.0, b=3.0)
+        self.k_proj = torch.nn.Parameter(torch.empty(num_heads, self.d_k, d_in, **factory_kwargs))
+        torch.nn.init.trunc_normal_(self.k_proj, mean=0.0, std=1, a=-3.0, b=3.0)
+        self.v_proj = torch.nn.Parameter(torch.empty(num_heads, self.d_v, d_in, **factory_kwargs))
+        torch.nn.init.trunc_normal_(self.v_proj, mean=0.0, std=1, a=-3.0, b=3.0)
+        self.o_proj = torch.nn.Parameter(torch.empty(d_model, self.d_v * num_heads, **factory_kwargs))
+        torch.nn.init.trunc_normal_(self.o_proj, mean=0.0, std=1, a=-3.0, b=3.0)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor): # x: (..., seq_len, d_in)
         assert self.d_in == x.shape[-1]
-        query = einsum(self.w_q, x, "num_heads d_k d_in, ... seq_len d_in -> ... num_heads seq_len d_k")
+        query = einsum(self.q_proj, x, "num_heads d_k d_in, ... seq_len d_in -> ... num_heads seq_len d_k")
         query = self.rope(query, token_positions)
-        key = einsum(self.w_k, x, "num_heads d_k d_in, ... seq_len d_in -> ... num_heads seq_len d_k")
+        key = einsum(self.k_proj, x, "num_heads d_k d_in, ... seq_len d_in -> ... num_heads seq_len d_k")
         key = self.rope(key, token_positions)
-        value = einsum(self.w_v, x, "num_heads d_v d_in, ... seq_len d_in -> ... num_heads seq_len d_v")
+        value = einsum(self.v_proj, x, "num_heads d_v d_in, ... seq_len d_in -> ... num_heads seq_len d_v")
         seq_len = x.shape[-2]
         mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
         multihead = scaled_dot_product_attention(query, key, value, mask) # (... num_heads seq_len d_v)
         multihead = rearrange(multihead, "... num_heads seq_len d_v -> ... seq_len (num_heads d_v)")
-        multihead_self_attention = einsum(multihead, self.w_o, "... seq_len d, d_out d -> ... seq_len d_out")
+        multihead_self_attention = einsum(multihead, self.o_proj, "... seq_len d, d_out d -> ... seq_len d_out")
         return multihead_self_attention
