@@ -12,10 +12,10 @@ class TransformerLM(torch.nn.Module):
             d_model: int, num_heads: int, d_ff: int, device=None, dtype=None):
         super().__init__()
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
-        self.layers = [
+        self.layers = torch.nn.ModuleList(
             TransformerBlock(theta, context_length, d_model, num_heads, d_ff, device=device, dtype=dtype)
             for _ in range(num_layers)
-        ]
+        )
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
     
