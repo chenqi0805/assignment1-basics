@@ -149,7 +149,7 @@ def main():
                        help="Evaluate every N steps")
     parser.add_argument("--eval_steps", type=int, default=100,
                        help="Number of steps for evaluation")
-    parser.add_argument("--save_interval", type=int, default=5000,
+    parser.add_argument("--save_interval", type=int, default=500,
                        help="Save checkpoint every N steps")
     parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints",
                        help="Directory to save checkpoints")
