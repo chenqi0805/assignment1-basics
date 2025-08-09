@@ -7,12 +7,39 @@ loading during training.
 """
 
 import argparse
+from functools import partial
+import multiprocessing
+from typing import Iterable, List
 import numpy as np
 import os
 from cs336_basics.tokenizer import Tokenizer
 
+def find_batch(texts: Iterable[str], batch_size: int) -> Iterable[List[str]]:
+    batch = []
+    for text in texts:
+        batch.append(text)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
-def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merges_file: str):
+def encode_batch(tokenizer: Tokenizer, batch: List[str]) -> List[int]:
+    return list(tokenizer.encode_iterable(batch))
+
+def parallel_encode(tokenizer: Tokenizer, texts: Iterable[str], batch_size: int, num_processes: int) -> List[str]:
+    encode_with_tokenizer = partial(encode_batch, tokenizer)
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        token_id_batches = pool.imap(encode_with_tokenizer, find_batch(texts, batch_size))
+
+        # Merge all
+        final_token_ids = []
+        for batch in token_id_batches:
+            final_token_ids.extend(batch)
+
+        return final_token_ids
+
+def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merges_file: str, batch_size: int, num_processes: int):
     """
     Convert text data to tokenized memory-mapped format.
     
@@ -27,12 +54,10 @@ def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merge
     
     print(f"Reading text from {text_file}")
     with open(text_file, 'r', encoding='utf-8') as f:
-        text = f.read()
+        print("Tokenizing text...")
+        tokens = parallel_encode(tokenizer, f, batch_size, num_processes)
     
-    print("Tokenizing text...")
-    tokens = tokenizer.encode(text)
-    
-    print(f"Tokenized {len(text):,} characters into {len(tokens):,} tokens")
+    # print(f"Tokenized {len(text):,} characters into {len(tokens):,} tokens")
     print(f"Vocabulary size: {len(tokenizer.idx_to_bytes)}")
     
     # Convert to numpy array and save as memory-mapped file
@@ -58,10 +83,20 @@ def main():
                        help="Path to vocabulary file")
     parser.add_argument("--merges_file", type=str, required=True,
                        help="Path to merges file")
+    parser.add_argument("--batch_size", type=int, default=10000,
+                       help="Batch size for tokenization")
+    parser.add_argument("--num_processes", type=int, default=8,
+                       help="Number of processes to use for tokenization")
     
     args = parser.parse_args()
     
-    prepare_memmap_data(args.text_file, args.output_file, args.vocab_file, args.merges_file)
+    prepare_memmap_data(
+        args.text_file, 
+        args.output_file, 
+        args.vocab_file, 
+        args.merges_file,
+        args.batch_size,
+        args.num_processes)
 
 
 if __name__ == "__main__":

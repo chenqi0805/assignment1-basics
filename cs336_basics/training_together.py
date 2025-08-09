@@ -119,7 +119,7 @@ def main():
     # Training hyperparameters
     parser.add_argument("--batch_size", type=int, default=32,
                        help="Batch size")
-    parser.add_argument("--learning_rate", type=float, default=2e-4,
+    parser.add_argument("--learning_rate", type=float, default=5e-4,
                        help="Peak learning rate")
     parser.add_argument("--min_learning_rate", type=float, default=1e-5,
                        help="Minimum learning rate")
@@ -165,7 +165,7 @@ def main():
                        help="Weights & Biases run name")
     
     # Device
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu",
+    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "mps",
                        help="Device to use for training")
     
     args = parser.parse_args()
@@ -210,6 +210,8 @@ def main():
         d_ff=args.d_ff,
         device=args.device
     ).to(args.device)
+
+    model = torch.compile(model, backend="aot_eager")
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())
