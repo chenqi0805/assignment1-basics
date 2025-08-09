@@ -29,7 +29,7 @@ class MultiHeadSelfAttention(torch.nn.Module):
         key = einsum(self.w_k, x, "num_heads d_k d_in, ... seq_len d_in -> ... num_heads seq_len d_k")
         value = einsum(self.w_v, x, "num_heads d_v d_in, ... seq_len d_in -> ... num_heads seq_len d_v")
         seq_len = x.shape[-2]
-        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=x.device))
         multihead = scaled_dot_product_attention(query, key, value, mask) # (... num_heads seq_len d_v)
         multihead = rearrange(multihead, "... num_heads seq_len d_v -> ... seq_len (num_heads d_v)")
         multihead_self_attention = einsum(multihead, self.w_o, "... seq_len d, d_out d -> ... seq_len d_out")

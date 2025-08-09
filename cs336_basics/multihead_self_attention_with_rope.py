@@ -34,7 +34,7 @@ class MultiHeadSelfAttentionWithRoPE(torch.nn.Module):
         key = self.rope(key, token_positions)
         value = einsum(self.v_proj, x, "num_heads d_v d_in, ... seq_len d_in -> ... num_heads seq_len d_v")
         seq_len = x.shape[-2]
-        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool))
+        mask = torch.tril(torch.ones(seq_len, seq_len, dtype=torch.bool, device=x.device))
         multihead = scaled_dot_product_attention(query, key, value, mask) # (... num_heads seq_len d_v)
         multihead = rearrange(multihead, "... num_heads seq_len d_v -> ... seq_len (num_heads d_v)")
         multihead_self_attention = einsum(multihead, self.o_proj, "... seq_len d, d_out d -> ... seq_len d_out")
