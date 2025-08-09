@@ -1,4 +1,5 @@
 import ast
+from collections import defaultdict
 import itertools
 import json
 import os
@@ -6,7 +7,7 @@ import pathlib
 import resource
 import psutil
 import regex as re
-from typing import Iterable, Iterator, Optional
+from typing import Iterable, Iterator, List, Optional
 
 from tests.common import gpt2_bytes_to_unicode
 
@@ -34,12 +35,20 @@ class Tokenizer:
         self.idx_to_bytes.update({i + offset: token_bytes for i, token_bytes in enumerate(special_tokens_to_be_added)})
         self.bytes_to_idx = {b: idx for idx, b in self.idx_to_bytes.items()}
         self.merges = merges
+        self.merge_ranks = {pair: i for i, pair in enumerate(merges)}
 
     @classmethod
     def from_files(cls, vocab_filepath: str, merges_filepath: str, special_tokens: list[str] | None=None):
         vocab = _read_bytes_dict(vocab_filepath)
         merges = _read_byte_pairs(merges_filepath)
         return cls(vocab, merges, special_tokens)
+    
+    def get_pairs(self, word_tuple: tuple[bytes, ...]) -> List[tuple]:
+        pairs = []
+        for i in range(len(word_tuple) - 1):
+            pair = (word_tuple[i], word_tuple[i + 1])
+            pairs.append(pair)
+        return pairs
 
     def encode(self, text: str) -> list[int]:
         if self.special_tokens:
@@ -49,26 +58,36 @@ class Tokenizer:
             text_parts = [text]
         pretokenized = self._pretokenize(text_parts)
         pretokenized_set = set(pretokenized)
-        token_tuple_map = {word: tuple(bytes([b]) for b in word.encode('utf-8')) for word in pretokenized_set if word not in self.special_tokens_set}
+        # token_tuple_map = {word: tuple(bytes([b]) for b in word.encode('utf-8')) for word in pretokenized_set if word not in self.special_tokens_set}
+        token_idx_map = defaultdict(list)
 
-        for pair in self.merges:
-            merged_pair = b''.join(pair)
-            for word, token_tuple in token_tuple_map.items():
-                new_token_tuple = []
+        for word in pretokenized_set:
+            if word in self.special_tokens_set:
+                continue
+            word_tuple = tuple(bytes([b]) for b in word.encode('utf-8'))
+            pairs = self.get_pairs(word_tuple)
+            while True:
+                if not pairs:
+                    break
+                bigram = min(pairs, key=lambda pair: self.merge_ranks.get(pair, float('inf')))
+                if bigram not in self.merge_ranks:
+                    break
+                new_word_tuple = []
                 i = 0
-                while i < len(token_tuple):
-                    if i < len(token_tuple) - 1 and token_tuple[i:i+2] == pair:
-                        new_token_tuple.append(merged_pair)
+                while i < len(word_tuple):
+                    if i < len(word_tuple) - 1 and word_tuple[i:i+2] == bigram:
+                        new_word_tuple.append(b''.join(bigram))
                         i += 2
                     else:
-                        new_token_tuple.append(token_tuple[i])
+                        new_word_tuple.append(word_tuple[i])
                         i += 1
-                token_tuple_map[word] = tuple(new_token_tuple)
+                word_tuple = tuple(new_word_tuple)
+                pairs = self.get_pairs(word_tuple)
 
-        token_idx_map = {word: [self.bytes_to_idx[token] for token in token_tuple] for word, token_tuple in token_tuple_map.items()}
+            token_idx_map[word] = [self.bytes_to_idx[token] for token in word_tuple]
+
         token_idx_map.update({token: [self.bytes_to_idx[token.encode('utf-8')]] for token in self.special_tokens_set})
         token_indices = [token_idx_map[word] for word in pretokenized]
-
         return list(itertools.chain.from_iterable(token_indices))
     
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
