@@ -137,8 +137,6 @@ def main():
     # Learning rate schedule
     parser.add_argument("--warmup_steps", type=int, default=500,
                        help="Number of warmup steps")
-    parser.add_argument("--cooldown_steps", type=int, default=10000,
-                        help="Number of cooldown steps")
     parser.add_argument("--max_steps", type=int, default=5000,
                        help="Maximum number of training steps")
     
@@ -248,7 +246,7 @@ def main():
             alpha_max=args.learning_rate,
             alpha_min=args.min_learning_rate,
             t_w=args.warmup_steps,
-            t_c=args.cooldown_steps
+            t_c=args.max_steps
         )
         
         for param_group in optimizer.param_groups:
