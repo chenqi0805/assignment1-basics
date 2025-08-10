@@ -53,7 +53,7 @@ def setup_logging(log_file: Optional[str] = None):
     return logging.getLogger(__name__)
 
 
-def load_memmap_dataset(data_path: str, dtype=np.int32) -> np.memmap:
+def load_memmap_dataset(data_path: str, dtype) -> np.memmap:
     """Load dataset using memory mapping for efficiency."""
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Dataset not found at {data_path}")
@@ -204,8 +204,8 @@ def main():
     
     # Load datasets with memory mapping
     logger.info("Loading datasets...")
-    train_data = load_memmap_dataset(args.train_data)
-    valid_data = load_memmap_dataset(args.valid_data)
+    train_data = load_memmap_dataset(args.train_data, np.uint16)
+    valid_data = load_memmap_dataset(args.valid_data, np.uint16)
     logger.info(f"Train data size: {len(train_data):,} tokens")
     logger.info(f"Valid data size: {len(valid_data):,} tokens")
     
