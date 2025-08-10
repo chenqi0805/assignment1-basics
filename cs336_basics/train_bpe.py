@@ -94,7 +94,8 @@ class BPETokenizer:
 
         print("Pretokenization done. Start invert indexing...")
 
-        pair_to_nodes = defaultdict(set)
+        # use dict as value type since its keySet preserves insertion order
+        pair_to_nodes = defaultdict(dict)
         byte_pair_count = Counter()
         for word, word_count in pretokenized.items():
             token_tuple = tuple(bytes([b]) for b in word.encode('utf-8'))
@@ -103,7 +104,7 @@ class BPETokenizer:
                 pair = token_tuple[j:j+2]
                 byte_pair_count[pair] += word_count
                 currNode = ByteInWordNode(token_tuple[j], word_count)
-                pair_to_nodes[pair].add(currNode)
+                pair_to_nodes[pair][currNode] = 1
                 if prevNode is not None:
                     prevNode.next = currNode
                 currNode.prev = prevNode
@@ -131,7 +132,9 @@ class BPETokenizer:
             vocabs.add(mergedBytes)
             remaining -= 1
             candidate_byte_pairs_to_push = set()
-            tuple_to_merge_impacted_nodes = set(pair_to_nodes[tuple_to_merge])
+            # Need to copy and preserve the order, thus use list
+            # corner case: b' ....' merging second '.' with third '.' or third '.' with fourth '.' does make a difference
+            tuple_to_merge_impacted_nodes = list(pair_to_nodes[tuple_to_merge].keys())
             for node in tuple_to_merge_impacted_nodes:
                 if node not in pair_to_nodes[tuple_to_merge]:
                     continue
@@ -141,15 +144,15 @@ class BPETokenizer:
                 if prevNode is not None:
                     byte_pair_count[(prevNode.bytes, node.bytes)] -= prevNode.word_freq
                     byte_pair_count[(prevNode.bytes, mergedBytes)] += prevNode.word_freq
-                    pair_to_nodes[(prevNode.bytes, node.bytes)].discard(prevNode)
-                    pair_to_nodes[(prevNode.bytes, mergedBytes)].add(prevNode)
+                    del pair_to_nodes[(prevNode.bytes, node.bytes)][prevNode]
+                    pair_to_nodes[(prevNode.bytes, mergedBytes)][prevNode] = 1
                     candidate_byte_pairs_to_push.add((prevNode.bytes, node.bytes))
                     candidate_byte_pairs_to_push.add((prevNode.bytes, mergedBytes))
                 if nextNextNode is not None:
                     byte_pair_count[(nextNode.bytes, nextNextNode.bytes)] -= nextNode.word_freq
                     byte_pair_count[(mergedBytes, nextNextNode.bytes)] += node.word_freq
-                    pair_to_nodes[(nextNode.bytes, nextNextNode.bytes)].discard(nextNode)
-                    pair_to_nodes[(mergedBytes, nextNextNode.bytes)].add(node)
+                    del pair_to_nodes[(nextNode.bytes, nextNextNode.bytes)][nextNode]
+                    pair_to_nodes[(mergedBytes, nextNextNode.bytes)][node] = 1
                     candidate_byte_pairs_to_push.add((nextNode.bytes, nextNextNode.bytes))
                     candidate_byte_pairs_to_push.add((mergedBytes, nextNextNode.bytes))
                     nextNextNode.prev = node
