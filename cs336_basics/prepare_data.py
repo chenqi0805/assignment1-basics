@@ -75,11 +75,11 @@ def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merge
     print(f"Vocabulary size: {len(tokenizer.idx_to_bytes)}")
     
     # Convert to numpy array and save as memory-mapped file
-    tokens_array = np.array(tokens, dtype=np.int32)
+    tokens_array = np.array(tokens, dtype=np.uint16)
     
     print(f"Saving to {output_file}")
     # Save as memory-mapped file
-    memmap_array = np.memmap(output_file, dtype=np.int32, mode='w+', shape=tokens_array.shape)
+    memmap_array = np.memmap(output_file, dtype=np.uint16, mode='w+', shape=tokens_array.shape)
     memmap_array[:] = tokens_array
     memmap_array.flush()
     
