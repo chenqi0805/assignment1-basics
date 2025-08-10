@@ -34,7 +34,6 @@ class Tokenizer:
         special_tokens_to_be_added = [token for token in self.special_tokens_bytes if token not in vocabs]
         self.idx_to_bytes.update({i + offset: token_bytes for i, token_bytes in enumerate(special_tokens_to_be_added)})
         self.bytes_to_idx = {b: idx for idx, b in self.idx_to_bytes.items()}
-        self.merges = merges
         self.merge_ranks = {pair: i for i, pair in enumerate(merges)}
 
     @classmethod
@@ -58,7 +57,6 @@ class Tokenizer:
             text_parts = [text]
         pretokenized = self._pretokenize(text_parts)
         pretokenized_set = set(pretokenized)
-        # token_tuple_map = {word: tuple(bytes([b]) for b in word.encode('utf-8')) for word in pretokenized_set if word not in self.special_tokens_set}
         token_idx_map = defaultdict(list)
 
         for word in pretokenized_set:

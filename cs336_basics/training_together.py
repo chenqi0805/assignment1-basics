@@ -29,6 +29,17 @@ from cs336_basics.gradient_clipping import gradient_clipping
 
 import wandb
 
+def _to_device_and_compile(model: TransformerLM, device=None):
+    if not device:
+        if torch.backends.mps.is_available():
+            device = torch.device("mps")
+        elif torch.cuda.is_available():
+            device = torch.device("cuda")
+        else:
+            device = torch.device("cpu")
+    model = model.to(device)
+    return model, device
+
 def setup_logging(log_file: Optional[str] = None):
     """Set up logging configuration."""
     logging.basicConfig(
@@ -209,9 +220,9 @@ def main():
         num_heads=args.num_heads,
         d_ff=args.d_ff,
         device=args.device
-    ).to(args.device)
+    )
 
-    model = torch.compile(model, backend="aot_eager")
+    model, _ = _to_device_and_compile(model, args.device)
     
     # Count parameters
     total_params = sum(p.numel() for p in model.parameters())

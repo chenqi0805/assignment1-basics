@@ -7,11 +7,15 @@ loading during training.
 """
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from functools import partial
 import multiprocessing
 from typing import Iterable, List
 import numpy as np
 import os
+
+from tqdm import tqdm
+
 from cs336_basics.tokenizer import Tokenizer
 
 def find_batch(texts: Iterable[str], batch_size: int) -> Iterable[List[str]]:
@@ -28,6 +32,16 @@ def encode_batch(tokenizer: Tokenizer, batch: List[str]) -> List[int]:
     return list(tokenizer.encode_iterable(batch))
 
 def parallel_encode(tokenizer: Tokenizer, texts: Iterable[str], batch_size: int, num_processes: int) -> List[str]:
+    # results = []
+    # with ProcessPoolExecutor(max_workers=num_processes) as exe:
+    #     futures = []
+    #     for batch in find_batch(texts, batch_size):
+    #         futures.append(exe.submit(encode_batch, tokenizer, batch))
+    #     for fut in tqdm(as_completed(futures), total=len(futures), desc="Tokenizing"):
+    #         arr = fut.result()
+    #         results.extend(arr)
+    # return results
+            
     encode_with_tokenizer = partial(encode_batch, tokenizer)
     with multiprocessing.Pool(processes=num_processes) as pool:
         token_id_batches = pool.imap(encode_with_tokenizer, find_batch(texts, batch_size))
@@ -50,7 +64,7 @@ def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merge
         merges_file: Path to merges file
     """
     print(f"Loading tokenizer from {vocab_file} and {merges_file}")
-    tokenizer = Tokenizer.from_files(vocab_file, merges_file)
+    tokenizer = Tokenizer.from_files(vocab_file, merges_file, ["<|endoftext|>"])
     
     print(f"Reading text from {text_file}")
     with open(text_file, 'r', encoding='utf-8') as f:
