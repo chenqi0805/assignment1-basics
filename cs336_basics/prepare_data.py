@@ -43,15 +43,15 @@ def parallel_encode(tokenizer: Tokenizer, texts: Iterable[str], batch_size: int,
     # return results
             
     encode_with_tokenizer = partial(encode_batch, tokenizer)
+    final_token_ids = []
     with multiprocessing.Pool(processes=num_processes) as pool:
         token_id_batches = pool.imap(encode_with_tokenizer, find_batch(texts, batch_size))
 
         # Merge all
-        final_token_ids = []
         for batch in token_id_batches:
             final_token_ids.extend(batch)
 
-        return final_token_ids
+    return final_token_ids
 
 def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merges_file: str, batch_size: int, num_processes: int):
     """
@@ -74,13 +74,15 @@ def prepare_memmap_data(text_file: str, output_file: str, vocab_file: str, merge
     # print(f"Tokenized {len(text):,} characters into {len(tokens):,} tokens")
     print(f"Vocabulary size: {len(tokenizer.idx_to_bytes)}")
     
-    # Convert to numpy array and save as memory-mapped file
-    tokens_array = np.array(tokens, dtype=np.uint16)
-    
+    # Suppose tokens is a list of integers
+    n = len(tokens)
+
     print(f"Saving to {output_file}")
-    # Save as memory-mapped file
-    memmap_array = np.memmap(output_file, dtype=np.uint16, mode='w+', shape=tokens_array.shape)
-    memmap_array[:] = tokens_array
+    # Create memmap directly
+    memmap_array = np.memmap(output_file, dtype=np.uint16, mode='w+', shape=(n,))
+
+    # Fill from the list without an intermediate np.array
+    memmap_array[:] = tokens  # NumPy will copy from Python list directly
     memmap_array.flush()
     
     print(f"Successfully saved {len(tokens):,} tokens to {output_file}")
@@ -99,7 +101,7 @@ def main():
                        help="Path to merges file")
     parser.add_argument("--batch_size", type=int, default=10000,
                        help="Batch size for tokenization")
-    parser.add_argument("--num_processes", type=int, default=8,
+    parser.add_argument("--num_processes", type=int, default=4,
                        help="Number of processes to use for tokenization")
     
     args = parser.parse_args()
