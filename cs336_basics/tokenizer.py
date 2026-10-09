@@ -9,6 +9,8 @@ merge the present pair with the lowest creation rank).
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Iterable, Iterator
 from itertools import pairwise
 
@@ -18,6 +20,29 @@ from cs336_basics.train_bpe import GPT2_PRETOKENIZE_PATTERN, _merge_word
 
 # Type alias for a pair of byte tokens.
 Pair = tuple[bytes, bytes]
+
+
+def bytes_to_unicode() -> dict[int, str]:
+    """GPT-2's reversible byte-to-unicode-string map.
+
+    Maps every byte to a printable unicode character (printable bytes map to
+    themselves; others, including space, map to codepoints 256+), so byte
+    sequences can round-trip through text files like JSON and space-separated
+    merges lists.
+    """
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("\u00a1"), ord("\u00ac") + 1))
+        + list(range(ord("\u00ae"), ord("\u00ff") + 1))
+    )
+    cs = bs[:]
+    n = 0
+    for b in range(256):
+        if b not in bs:
+            bs.append(b)
+            cs.append(256 + n)
+            n += 1
+    return dict(zip(bs, map(chr, cs)))
 
 
 class Tokenizer:
@@ -37,9 +62,18 @@ class Tokenizer:
                 are matched longest-first, so overlapping specials resolve to
                 the longest match.
         """
-        self.vocab = dict(vocab)
+        self.vocab: dict[int, bytes] = dict(vocab)
+        self.vocab_inv: dict[bytes, int] = {v: k for k, v in self.vocab.items()}
         self.merges_ranks: dict[Pair, int] = {pair: i for i, pair in enumerate(merges)}
         self.special_tokens = sorted(special_tokens or [], key=len, reverse=True)
+        # Append special tokens that aren't in the vocab yet, as the spec
+        # requires, so they get IDs and round-trip through decode.
+        for special in self.special_tokens:
+            special_bytes = special.encode("utf-8")
+            if special_bytes not in self.vocab_inv:
+                new_id = max(self.vocab, default=-1) + 1
+                self.vocab[new_id] = special_bytes
+                self.vocab_inv[special_bytes] = new_id
         # Longest-first alternating split pattern; group 1 captures the special
         # token so re.split keeps it in the output.
         self._special_split_pattern = (
@@ -47,13 +81,48 @@ class Tokenizer:
             if self.special_tokens
             else None
         )
-        # bytes -> id inversion (used to emit IDs for encoded pieces).
-        self.vocab_inv: dict[bytes, int] = {v: k for k, v in self.vocab.items()}
         self.special_token_ids: dict[str, int] = {
             special: self.vocab_inv[special.encode("utf-8")]
             for special in self.special_tokens
-            if special.encode("utf-8") in self.vocab_inv
         }
+
+    @classmethod
+    def from_files(
+        cls,
+        vocab_filepath: str | os.PathLike,
+        merges_filepath: str | os.PathLike,
+        special_tokens: list[str] | None = None,
+    ) -> Tokenizer:
+        """Load a Tokenizer from files in the GPT-2 serialization format.
+
+        vocab_filepath: JSON object mapping each token's remapped string
+            (via bytes_to_unicode, so non-UTF-8 bytes survive) to its ID.
+        merges_filepath: one merge per line, "left right" in remapped
+            strings; blank/malformed lines are skipped.
+        """
+        byte_decoder = {c: b for b, c in bytes_to_unicode().items()}
+        with open(vocab_filepath, encoding="utf-8") as f:
+            raw_vocab: dict[str, int] = json.load(f)
+        vocab = {
+            int(token_id): bytes(byte_decoder[ch] for ch in token_str)
+            for token_str, token_id in raw_vocab.items()
+        }
+        merges: list[Pair] = []
+        with open(merges_filepath, encoding="utf-8") as f:
+            for line in f:
+                cleaned = line.rstrip()
+                if not cleaned:
+                    continue
+                parts = cleaned.split(" ")
+                if len(parts) != 2:
+                    continue
+                merges.append(
+                    (
+                        bytes(byte_decoder[ch] for ch in parts[0]),
+                        bytes(byte_decoder[ch] for ch in parts[1]),
+                    )
+                )
+        return cls(vocab, merges, special_tokens)
 
     def encode(self, text: str) -> list[int]:
         """Encode text into token IDs. Special tokens stay whole.
