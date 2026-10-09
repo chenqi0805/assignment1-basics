@@ -1,0 +1,8 @@
+# Obvious repo policy — chenqi0805/assignment1-basics
+# Default branch and merge settings auto-detected from GitHub (2026-10-09):
+# defaultBranchRef=main; mergeCommit/rebaseMerge/squashMerge all allowed; deleteBranchOnMerge=false.
+branches:
+  default: main
+merge:
+  method: squash
+  delete_branch_on_merge: false
