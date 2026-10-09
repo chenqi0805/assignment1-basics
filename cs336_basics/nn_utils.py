@@ -27,6 +27,11 @@ def softmax(in_features: Float[torch.Tensor, " ..."], dim: int) -> Float[torch.T
     return exp / exp.sum(dim=dim, keepdim=True)
 
 
+def silu(x: Float[torch.Tensor, " ..."]) -> Float[torch.Tensor, " ..."]:
+    """SiLU (Swish) activation: x · σ(x). Smooth at zero, unlike ReLU."""
+    return x * torch.sigmoid(x)
+
+
 def cross_entropy(
     inputs: Float[torch.Tensor, " batch vocab_size"],
     targets: Int[torch.Tensor, " batch"],
